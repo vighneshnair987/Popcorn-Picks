@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Popcorn Picks — Find your next favorite film</title>
+<meta name="description" content="Popcorn Picks is a movie discovery and analytics app exploring Indian cinema through ratings, genres and trends." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+<style>
+/* ============================================================
+   1. RESET
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+img, svg { display: block; max-width: 100%; }
+button { font: inherit; cursor: pointer; }
+a { text-decoration: none; color: inherit; }
+ul { list-style: none; }
+input, select { font: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ============================================================
+   2. VARIABLES
+   ============================================================ */
+:root {
+  --bg-primary: #0c0d10;
+  --bg-secondary: #14161b;
+  --bg-elevated: #191b21;
+
+  --glass-bg: rgba(255, 255, 255, 0.045);
+  --glass-bg-strong: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f1efe9;
+  --text-secondary: #a7abb5;
+  --text-muted: #6c707a;
+
+  --accent: #e2a33d;       /* butter / popcorn gold */
+  --accent-dim: #b8842f;
+  --accent-soft: rgba(226, 163, 61, 0.14);
+  --logo-red: #c9372c;
+
+  --success: #4fae7f;
+  --danger: #e2574c;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.35);
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  --container-w: 1240px;
+}
+
+/* ============================================================
+   3. TYPOGRAPHY
+   ============================================================ */
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display { font-family: 'Fraunces', serif; }
+
+h1, h2, h3, h4 { font-family: 'Fraunces', serif; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+
+.section-heading {
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+  margin-bottom: 6px;
+}
+.section-sub {
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+  max-width: 60ch;
+}
+.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+
+::selection { background: var(--accent-soft); color: var(--text-primary); }
+
+/* visible focus states */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================================
+   4. LAYOUT
+   ============================================================ */
+.container { width: 100%; max-width: var(--container-w); margin: 0 auto; padding: 0 24px; }
+.page-section { padding: 72px 0; }
+.page-section.tight { padding: 48px 0; }
+.bg-alt { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.015) 20%, rgba(255,255,255,0.015) 80%, transparent); }
+
+.grain-bg {
+  position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(1100px 600px at 15% -10%, rgba(226,163,61,0.07), transparent 60%),
+    radial-gradient(900px 500px at 100% 10%, rgba(120,80,180,0.06), transparent 55%),
+    radial-gradient(800px 500px at 50% 100%, rgba(226,163,61,0.04), transparent 60%),
+    var(--bg-primary);
+}
+
+/* ============================================================
+   5. NAVBAR
+   ============================================================ */
+.navbar {
+  position: sticky; top: 0; z-index: 200;
+  padding: 14px 0;
+}
+.navbar-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-radius: var(--radius-lg);
+  padding: 10px 18px;
+}
+.logo { display: flex; align-items: center; gap: 9px; font-family: 'Fraunces', serif; font-weight: 700; font-size: 1.2rem; }
+.logo-mark {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--logo-red);
+  position: relative; flex: none;
+}
+.logo-mark::before, .logo-mark::after {
+  content: ""; position: absolute; background: #fff; border-radius: 1px;
+}
+.logo-mark::before { width: 12px; height: 3px; top: 6px; left: 7px; }
+.logo-mark::after { width: 12px; height: 3px; bottom: 6px; left: 7px; }
+.logo-text span { color: var(--logo-red); }
+
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-links a {
+  padding: 8px 14px; border-radius: 999px; font-size: 0.92rem; color: var(--text-secondary);
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+.nav-links a:hover, .nav-links a.active { color: var(--text-primary); background: rgba(255,255,255,0.06); }
+
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border-radius: 999px; background: transparent; border: 1px solid transparent; color: var(--text-secondary);
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
+  position: relative;
+}
+.icon-btn:hover { background: var(--glass-bg-strong); border-color: var(--glass-border); color: var(--text-primary); }
+.watchlist-count {
+  position: absolute; top: -3px; right: -3px; background: var(--accent); color: #1a1305;
+  font-size: 0.63rem; font-weight: 700; min-width: 16px; height: 16px; border-radius: 999px;
+  display: grid; place-items: center; padding: 0 3px;
+}
+.nav-search {
+  display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05);
+  border: 1px solid var(--glass-border); border-radius: 999px; padding: 7px 14px; width: 220px;
+}
+.nav-search input { background: none; border: none; color: var(--text-primary); width: 100%; font-size: 0.87rem; }
+.nav-search input::placeholder { color: var(--text-muted); }
+.nav-search i { color: var(--text-muted); font-size: 0.9rem; }
+
+.mobile-menu-btn { display: none; }
+.mobile-panel { display: none; }
+
+@media (max-width: 900px) {
+  .nav-links, .nav-search { display: none; }
+  .mobile-menu-btn { display: grid; }
+}
+
+/* ============================================================
+   6. BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 22px; border-radius: 999px; font-size: 0.92rem; font-weight: 600;
+  border: 1px solid transparent; transition: transform 0.16s var(--ease), background 0.16s var(--ease), border-color 0.16s var(--ease);
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent); color: #201604; }
+.btn-primary:hover { background: #ecb457; }
+.btn-ghost { background: var(--glass-bg); border-color: var(--glass-border); color: var(--text-primary); backdrop-filter: blur(10px); }
+.btn-ghost:hover { background: var(--glass-bg-strong); border-color: var(--glass-border-strong); }
+.btn-sm { padding: 8px 16px; font-size: 0.82rem; }
+.btn-block { width: 100%; justify-content: center; }
+.btn-danger-outline { background: transparent; border-color: rgba(226,87,76,0.4); color: var(--danger); }
+.btn-danger-outline:hover { background: rgba(226,87,76,0.1); }
+
+/* ============================================================
+   7. HERO
+   ============================================================ */
+.hero { padding: 56px 0 40px; }
+.hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+.eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 0.85rem; font-weight: 600; margin-bottom: 18px; }
+.eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.hero h1 { font-size: clamp(2.3rem, 1.7rem + 2.6vw, 3.6rem); margin-bottom: 18px; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lead { color: var(--text-secondary); font-size: 1.06rem; max-width: 46ch; margin-bottom: 30px; }
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.hero-panel {
+  position: relative; border-radius: var(--radius-lg); padding: 26px;
+  background: linear-gradient(155deg, rgba(226,163,61,0.10), rgba(255,255,255,0.03) 45%, rgba(120,80,180,0.08));
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+.hero-panel::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.25), transparent 40%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+.hero-panel-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+.hero-film-tag { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.hero-rating { display: flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--accent); padding: 5px 10px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+.hero-panel h3 { font-size: 1.5rem; margin-bottom: 6px; }
+.hero-panel .meta { color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px; }
+.hero-genre-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.tag { padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); font-size: 0.76rem; color: var(--text-secondary); }
+.hero-stat-row { display: flex; gap: 14px; }
+.hero-stat { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 12px; }
+.hero-stat .num { font-family: 'Fraunces', serif; font-size: 1.35rem; color: var(--accent); }
+.hero-stat .lbl { font-size: 0.72rem; color: var(--text-muted); }
+
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+}
+
+/* ============================================================
+   8. CARDS — Movie cards with generated genre visuals
+   ============================================================ */
+.movie-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;
+}
+.movie-grid.compact { grid-template-columns: 1fr; gap: 10px; }
+
+.movie-card {
+  position: relative; border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.movie-card:hover, .movie-card:focus-visible { transform: translateY(-4px); border-color: var(--glass-border-strong); box-shadow: var(--shadow-soft); }
+
+.movie-card-visual {
+  position: relative; height: 148px; display: flex; align-items: flex-end; padding: 12px;
+  overflow: hidden;
+}
+.movie-card-visual::before {
+  content: ""; position: absolute; inset: 0; opacity: 0.85; transition: opacity 0.25s var(--ease);
+}
+.movie-card:hover .movie-card-visual::before { opacity: 1; }
+.movie-card-visual::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(120deg, rgba(255,255,255,0.035) 0 2px, transparent 2px 26px);
+  mix-blend-mode: overlay;
+}
+.movie-card-icon { position: relative; z-index: 1; font-size: 1.6rem; opacity: 0.55; color: #fff; }
+.movie-card-rating {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  background: rgba(10,10,12,0.55); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--accent); font-weight: 700; font-size: 0.78rem;
+  padding: 4px 8px; border-radius: 999px; display: flex; align-items: center; gap: 4px;
+}
+.watchlist-toggle {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(10,10,12,0.55); border: 1px solid rgba(255,255,255,0.14); backdrop-filter: blur(6px);
+  color: #fff; display: grid; place-items: center; opacity: 0.85;
+  transition: background 0.18s var(--ease), transform 0.15s var(--ease), opacity 0.18s var(--ease);
+}
+.movie-card:hover .watchlist-toggle { opacity: 1; }
+.watchlist-toggle:hover { transform: scale(1.08); }
+.watchlist-toggle.active { background: var(--accent); color: #201604; border-color: var(--accent); }
+
+.movie-card-body { padding: 13px 14px 15px; }
+.movie-card-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 0.98rem; margin-bottom: 3px; line-height: 1.25; }
+.movie-card-meta { color: var(--text-muted); font-size: 0.76rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.movie-card-meta .sep { opacity: 0.5; }
+.movie-card-genres { margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap; }
+.movie-card-genres .tag { padding: 3px 9px; font-size: 0.68rem; }
+
+/* compact list rows */
+.movie-row {
+  display: grid; grid-template-columns: 64px 1fr auto auto; gap: 16px; align-items: center;
+  padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);
+  background: var(--glass-bg); cursor: pointer; transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.movie-row:hover { background: var(--glass-bg-strong); border-color: var(--glass-border-strong); }
+.movie-row-visual { width: 64px; height: 46px; border-radius: 6px; position: relative; overflow: hidden; }
+.movie-row-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 0.95rem; }
+.movie-row-meta { color: var(--text-muted); font-size: 0.78rem; }
+.movie-row-rating { color: var(--accent); font-weight: 700; font-size: 0.85rem; }
+
+/* Genre visual treatments */
+.genre-action     { background: linear-gradient(135deg, #3a0f0c, #a3320f 130%); }
+.genre-romance    { background: linear-gradient(135deg, #2c1230, #8a3f7a 130%); }
+.genre-thriller   { background: linear-gradient(135deg, #0a1220, #14335c 130%); }
+.genre-comedy     { background: linear-gradient(135deg, #3a2a05, #c78a1f 130%); }
+.genre-horror     { background: linear-gradient(135deg, #0c1a10, #234d2c 130%); }
+.genre-scifi      { background: linear-gradient(135deg, #0d1230, #3b2f8a 130%); }
+.genre-drama      { background: linear-gradient(135deg, #131722, #35415e 130%); }
+.genre-crime      { background: linear-gradient(135deg, #180f14, #58223a 130%); }
+.genre-family     { background: linear-gradient(135deg, #142313, #4c7a2e 130%); }
+.genre-animation  { background: linear-gradient(135deg, #1b1030, #6a3f9e 130%); }
+.genre-mystery    { background: linear-gradient(135deg, #0e0f1c, #2c2b52 130%); }
+.genre-adventure  { background: linear-gradient(135deg, #1a1305, #8a6a1e 130%); }
+
+/* ============================================================
+   9. FILTERS
+   ============================================================ */
+.filter-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px; border-radius: var(--radius-md);
+  background: var(--glass-bg); border: 1px solid var(--glass-border); backdrop-filter: blur(14px);
+}
+.filter-chip-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; flex: 1; scrollbar-width: none; }
+.filter-chip-scroll::-webkit-scrollbar { display: none; }
+.filter-select {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary);
+  border-radius: 999px; padding: 8px 14px; font-size: 0.83rem; flex: none; min-width: fit-content;
+  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23a7abb5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; padding-right: 28px;
+}
+.filter-select:focus { border-color: var(--accent); }
+
+.discover-searchbar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+  padding: 14px 18px; margin-bottom: 16px; backdrop-filter: blur(14px);
+}
+.discover-searchbar i { color: var(--text-muted); font-size: 1.05rem; }
+.discover-searchbar input { flex: 1; background: none; border: none; color: var(--text-primary); font-size: 0.98rem; }
+.discover-searchbar input::placeholder { color: var(--text-muted); }
+.discover-searchbar button { flex: none; }
+
+.discover-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0; }
+.result-count { color: var(--text-secondary); font-size: 0.9rem; }
+.discover-toolbar-right { display: flex; align-items: center; gap: 10px; }
+.view-toggle { display: flex; border: 1px solid var(--glass-border); border-radius: 999px; overflow: hidden; }
+.view-toggle button { padding: 8px 12px; background: transparent; color: var(--text-muted); border: none; display: grid; place-items: center; }
+.view-toggle button.active { background: var(--glass-bg-strong); color: var(--accent); }
+
+/* Advanced filter drawer */
+.adv-filter-toggle { display: flex; align-items: center; gap: 6px; }
+.adv-drawer {
+  max-height: 0; overflow: hidden; transition: max-height 0.32s var(--ease), margin 0.32s var(--ease);
+  margin-top: 0;
+}
+.adv-drawer.open { max-height: 480px; margin-top: 14px; }
+.adv-drawer-inner {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+  padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px;
+}
+.field-group label { display: block; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 6px; }
+.field-group input[type="number"], .field-group select {
+  width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary);
+  padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;
+}
+.range-row { display: flex; gap: 8px; align-items: center; }
+.adv-drawer-actions { grid-column: 1 / -1; display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+
+/* ============================================================
+   10. MOVIE DETAILS MODAL
+   ============================================================ */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(5,5,7,0.7); backdrop-filter: blur(4px);
+  display: none; align-items: center; justify-content: center; z-index: 500; padding: 24px;
+}
+.modal-overlay.open { display: flex; animation: fadeIn 0.2s var(--ease); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(18px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.movie-modal {
+  width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto;
+  background: var(--bg-elevated); border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
+  animation: slideUp 0.24s var(--ease);
+}
+.modal-visual { height: 190px; position: relative; display: flex; align-items: flex-end; padding: 22px; }
+.modal-visual::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(15,16,20,0.9)); }
+.modal-close {
+  position: absolute; top: 14px; right: 14px; z-index: 2; width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(10,10,12,0.55); border: 1px solid rgba(255,255,255,0.15); color: #fff; display: grid; place-items: center;
+}
+.modal-visual-content { position: relative; z-index: 1; }
+.modal-visual-content h2 { font-size: 1.6rem; margin-bottom: 4px; }
+.modal-visual-content .modal-meta { color: rgba(255,255,255,0.85); font-size: 0.86rem; }
+
+.modal-body { padding: 22px; }
+.modal-stat-row { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 18px; }
+.modal-stat .lbl { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 3px; }
+.modal-stat .val { font-weight: 600; font-size: 0.95rem; }
+.modal-section { margin-bottom: 18px; }
+.modal-section h4 { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; font-family: 'Inter', sans-serif; }
+.modal-section p { color: var(--text-secondary); font-size: 0.92rem; }
+.modal-cast { display: flex; gap: 8px; flex-wrap: wrap; }
+.modal-actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .movie-modal { max-width: 100%; max-height: 92vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+}
+
+/* ============================================================
+   11. ANALYTICS
+   ============================================================ */
+.stat-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+  padding: 18px; backdrop-filter: blur(12px);
+}
+.stat-card .lbl { color: var(--text-muted); font-size: 0.78rem; margin-bottom: 8px; }
+.stat-card .val { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--accent); }
+.stat-card .sub { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 36px; }
+
+.chart-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+  padding: 18px; backdrop-filter: blur(12px);
+}
+.chart-card h4 { font-size: 0.92rem; font-family: 'Inter', sans-serif; font-weight: 600; margin-bottom: 4px; }
+.chart-card .chart-sub { font-size: 0.76rem; color: var(--text-muted); margin-bottom: 6px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.chart-grid .full { grid-column: 1 / -1; }
+@media (max-width: 800px) { .chart-grid { grid-template-columns: 1fr; } }
+
+/* ============================================================
+   12. GENRE EXPLORER
+   ============================================================ */
+.genre-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.genre-card {
+  position: relative; border-radius: var(--radius-md); padding: 20px; overflow: hidden; border: 1px solid var(--glass-border);
+  cursor: pointer; transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.genre-card:hover { transform: translateY(-3px); border-color: var(--glass-border-strong); }
+.genre-card::before { content: ""; position: absolute; inset: 0; opacity: 0.9; }
+.genre-card-content { position: relative; z-index: 1; }
+.genre-card i { font-size: 1.4rem; opacity: 0.7; margin-bottom: 30px; display: block; color: #fff; }
+.genre-card h4 { font-size: 1.05rem; margin-bottom: 3px; }
+.genre-card .g-meta { font-size: 0.78rem; color: rgba(255,255,255,0.75); }
+
+/* ============================================================
+   13. TREND INSIGHTS / WATCHLIST
+   ============================================================ */
+.insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.insight-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 18px;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.insight-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; font-size: 1rem; }
+.insight-card h4 { font-size: 0.95rem; margin-bottom: 3px; font-family: 'Inter', sans-serif; font-weight: 600; }
+.insight-card p { font-size: 0.82rem; color: var(--text-secondary); }
+
+.empty-state { text-align: center; padding: 70px 20px; }
+.empty-state i { font-size: 2.1rem; color: var(--text-muted); margin-bottom: 14px; display: block; }
+.empty-state h3 { margin-bottom: 6px; }
+.empty-state p { color: var(--text-secondary); margin-bottom: 20px; }
+
+/* ============================================================
+   14. FOOTER
+   ============================================================ */
+footer { border-top: 1px solid var(--glass-border); padding: 44px 0 32px; margin-top: 40px; }
+.footer-grid { display: flex; justify-content: space-between; gap: 30px; flex-wrap: wrap; margin-bottom: 26px; }
+.footer-about p { color: var(--text-secondary); font-size: 0.86rem; max-width: 34ch; margin-top: 10px; }
+.footer-links { display: flex; gap: 40px; flex-wrap: wrap; }
+.footer-links h5 { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px; font-family: 'Inter', sans-serif; }
+.footer-links a { display: block; font-size: 0.86rem; color: var(--text-secondary); padding: 4px 0; }
+.footer-links a:hover { color: var(--text-primary); }
+.footer-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 20px; border-top: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.78rem; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 640px) {
+  .page-section { padding: 48px 0; }
+  .hero { padding: 36px 0 24px; }
+  .section-head { flex-direction: column; align-items: flex-start; }
+  .chart-grid { grid-template-columns: 1fr; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.fade-up { animation: slideUp 0.4s var(--ease) both; }
+
+/* ============================================================
+   THEME — Light / Dark mode
+   Light mode uses a clean Apple.com-inspired white palette.
+   ============================================================ */
+:root {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #ffffff;
+
+  --glass-bg: rgba(255,255,255,0.72);
+  --glass-bg-strong: rgba(255,255,255,0.88);
+  --glass-border: rgba(0,0,0,0.08);
+  --glass-border-strong: rgba(0,0,0,0.14);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #86868b;
+
+  --accent: #e09a22;
+  --accent-dim: #b77913;
+  --accent-soft: rgba(224,154,34,0.12);
+
+  --logo-red: #c9372c;
+  --success: #287b52;
+  --danger: #c9342b;
+
+  --shadow-soft: 0 10px 35px rgba(0,0,0,0.10);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] body {
+  background: var(--bg-primary);
+}
+
+html[data-theme="light"] .grain-bg {
+  background:
+    radial-gradient(1100px 600px at 15% -10%, rgba(224,154,34,0.045), transparent 60%),
+    radial-gradient(900px 500px at 100% 10%, rgba(120,80,180,0.035), transparent 55%),
+    var(--bg-primary);
+}
+
+html[data-theme="light"] .bg-alt {
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.018) 20%, rgba(0,0,0,0.018) 80%, transparent);
+}
+
+html[data-theme="light"] .navbar-inner {
+  background: rgba(255,255,255,0.78);
+  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+}
+
+html[data-theme="light"] .nav-links a:hover,
+html[data-theme="light"] .nav-links a.active {
+  background: rgba(0,0,0,0.055);
+}
+
+html[data-theme="light"] .nav-search,
+html[data-theme="light"] .filter-select,
+html[data-theme="light"] .field-group input[type="number"],
+html[data-theme="light"] .field-group select {
+  background-color: rgba(0,0,0,0.035);
+}
+
+html[data-theme="light"] .hero-panel {
+  background: linear-gradient(155deg, rgba(224,154,34,0.09), rgba(255,255,255,0.9) 45%, rgba(120,80,180,0.05));
+}
+
+html[data-theme="light"] .tag,
+html[data-theme="light"] .hero-stat,
+html[data-theme="light"] .movie-row,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .chart-card,
+html[data-theme="light"] .insight-card,
+html[data-theme="light"] .filter-bar,
+html[data-theme="light"] .discover-searchbar,
+html[data-theme="light"] .adv-drawer-inner {
+  background: rgba(255,255,255,0.72);
+}
+
+html[data-theme="light"] .movie-card {
+  background: #ffffff;
+}
+
+html[data-theme="light"] .view-toggle button.active {
+  background: rgba(0,0,0,0.055);
+}
+
+html[data-theme="light"] .modal-overlay {
+  background: rgba(0,0,0,0.38);
+}
+
+html[data-theme="light"] .movie-modal {
+  background: #ffffff;
+}
+
+html[data-theme="light"] .modal-visual::after {
+  background: linear-gradient(180deg, transparent 40%, rgba(15,16,20,0.72));
+}
+
+/* Theme toggle */
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease), transform 0.15s var(--ease);
+}
+
+.theme-toggle:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+  color: var(--text-primary);
+}
+
+.theme-toggle:active {
+  transform: scale(0.94);
+}
+
+.theme-toggle i {
+  font-size: 1rem;
+}
+
+</style>
+</head>
+<body>
+
+<div class="grain-bg" aria-hidden="true"></div>
+
+<!-- ============================================================
+     NAVIGATION
+============================================================ -->
+<header class="navbar">
+  <div class="container">
+    <div class="navbar-inner">
+      <a href="#home" class="logo" aria-label="Popcorn Picks home">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span class="logo-text font-display">Popcorn <span>Picks</span></span>
+      </a>
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#home" class="active">Home</a>
+        <a href="#discover">Discover</a>
+        <a href="#picks">Movies</a>
+        <a href="#genres">Genres</a>
+        <a href="#analytics">Analytics</a>
+        <a href="#watchlist">Watchlist</a>
+      </nav>
+
+      <div class="nav-search" role="search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input id="navSearchInput" type="text" placeholder="Search movie titles..." aria-label="Search movie titles" />
+      </div>
+
+      <div class="nav-actions">
+        <button class="theme-toggle" id="themeToggle" type="button"
+                aria-label="Switch to light mode" title="Switch to light mode">
+          <i class="bi bi-moon-stars-fill" aria-hidden="true"></i>
+        </button>
+        <button class="icon-btn" id="navWatchlistBtn" aria-label="Open watchlist">
+          <i class="bi bi-bookmark-heart" aria-hidden="true"></i>
+          <span class="watchlist-count" id="watchlistCount">0</span>
+        </button>
+        <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu" aria-expanded="false">
+          <i class="bi bi-list" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="mobile-panel" id="mobilePanel" style="display:none;">
+      <div style="background:var(--glass-bg-strong); border:1px solid var(--glass-border); border-radius:var(--radius-md); margin-top:8px; padding:10px;">
+        <a href="#home" style="display:block; padding:10px;">Home</a>
+        <a href="#discover" style="display:block; padding:10px;">Discover</a>
+        <a href="#picks" style="display:block; padding:10px;">Movies</a>
+        <a href="#genres" style="display:block; padding:10px;">Genres</a>
+        <a href="#analytics" style="display:block; padding:10px;">Analytics</a>
+        <a href="#watchlist" style="display:block; padding:10px;">Watchlist</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="home">
+
+  <!-- ============================================================
+       HERO
+  ============================================================ -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="fade-up">
+        <div class="eyebrow"><span class="dot"></span> Indian cinema, explored properly</div>
+        <h1>Find your next <em>favorite film.</em></h1>
+        <p class="lead">Explore Indian cinema through ratings, genres, trends and personalized picks — no clutter, no posters required, just the data that matters.</p>
+        <div class="hero-actions">
+          <a href="#discover" class="btn btn-primary"><i class="bi bi-film"></i> Explore Movies</a>
+          <a href="#analytics" class="btn btn-ghost"><i class="bi bi-bar-chart-line"></i> Explore Trends</a>
+        </div>
+      </div>
+
+      <div class="hero-panel fade-up" style="animation-delay:0.08s;">
+        <div class="hero-panel-top">
+          <span class="hero-film-tag">Featured tonight</span>
+          <span class="hero-rating"><i class="bi bi-star-fill"></i> 8.6</span>
+        </div>
+        <h3 id="heroFeaturedTitle" class="font-display">—</h3>
+        <p class="meta" id="heroFeaturedMeta">—</p>
+        <div class="hero-genre-tags" id="heroFeaturedTags"></div>
+        <div class="hero-stat-row">
+          <div class="hero-stat"><div class="num" id="heroStatTotal">—</div><div class="lbl">Movies tracked</div></div>
+          <div class="hero-stat"><div class="num" id="heroStatGenres">—</div><div class="lbl">Genres covered</div></div>
+          <div class="hero-stat"><div class="num" id="heroStatLangs">—</div><div class="lbl">Languages</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TONIGHT'S PICKS
+  ============================================================ -->
+  <section class="page-section" id="picks">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">Tonight's Picks</h2>
+          <p class="section-sub">A rotating shortlist pulled from the highest-rated titles in the collection.</p>
+        </div>
+        <a href="#discover" class="btn btn-ghost btn-sm">Browse all <i class="bi bi-arrow-right"></i></a>
+      </div>
+      <div class="movie-grid" id="tonightsPicksGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       GENRE EXPLORER
+  ============================================================ -->
+  <section class="page-section bg-alt" id="genres">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">Browse by genre</h2>
+          <p class="section-sub">Every genre in the collection, sized by how well it's represented.</p>
+        </div>
+      </div>
+      <div class="genre-grid" id="genreGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       WHAT'S TRENDING
+  ============================================================ -->
+  <section class="page-section" id="trending">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">What's trending</h2>
+          <p class="section-sub">Quick reads on where the collection is headed, calculated from the current dataset.</p>
+        </div>
+      </div>
+      <div class="insight-grid" id="insightGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       DISCOVER
+  ============================================================ -->
+  <section class="page-section bg-alt" id="discover">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">Discover movies</h2>
+          <p class="section-sub">Search, filter and sort the full collection.</p>
+        </div>
+      </div>
+
+      <form class="discover-searchbar" id="discoverSearchForm">
+        <i class="bi bi-search"></i>
+        <input id="discoverSearchInput" type="text" placeholder="Search movie titles..." aria-label="Search movie titles" />
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search"></i> Search</button>
+      </form>
+
+      <div class="filter-bar">
+        <div class="filter-chip-scroll">
+          <select class="filter-select" id="filterGenre" aria-label="Filter by genre"><option value="">Genre</option></select>
+          <select class="filter-select" id="filterLanguage" aria-label="Filter by language"><option value="">Language</option></select>
+          <select class="filter-select" id="filterYear" aria-label="Filter by year"><option value="">Year</option></select>
+          <select class="filter-select" id="filterRating" aria-label="Filter by minimum rating"><option value="">Rating</option></select>
+          <select class="filter-select" id="filterCertificate" aria-label="Filter by certificate"><option value="">Certificate</option></select>
+        </div>
+        <button class="btn btn-ghost btn-sm adv-filter-toggle" id="advFilterToggle" aria-expanded="false">
+          <i class="bi bi-sliders"></i> More filters
+        </button>
+      </div>
+
+      <div class="adv-drawer" id="advDrawer">
+        <div class="adv-drawer-inner">
+          <div class="field-group">
+            <label for="advMinRating">Minimum rating</label>
+            <input type="number" id="advMinRating" min="0" max="10" step="0.1" placeholder="e.g. 6.0" />
+          </div>
+          <div class="field-group">
+            <label for="advMaxRating">Maximum rating</label>
+            <input type="number" id="advMaxRating" min="0" max="10" step="0.1" placeholder="e.g. 9.5" />
+          </div>
+          <div class="field-group">
+            <label for="advYearFrom">Year from</label>
+            <input type="number" id="advYearFrom" placeholder="e.g. 2000" />
+          </div>
+          <div class="field-group">
+            <label for="advYearTo">Year to</label>
+            <input type="number" id="advYearTo" placeholder="e.g. 2026" />
+          </div>
+          <div class="field-group">
+            <label for="advRuntime">Max runtime (min)</label>
+            <input type="number" id="advRuntime" placeholder="e.g. 150" />
+          </div>
+          <div class="field-group">
+            <label for="advMinVotes">Minimum votes</label>
+            <input type="number" id="advMinVotes" placeholder="e.g. 10000" />
+          </div>
+          <div class="adv-drawer-actions">
+            <button class="btn btn-ghost btn-sm" id="advReset">Reset</button>
+            <button class="btn btn-primary btn-sm" id="advApply">Apply filters</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="discover-toolbar">
+        <div class="result-count" id="resultCount">Showing 0 results</div>
+        <div class="discover-toolbar-right">
+          <select class="filter-select" id="sortSelect" aria-label="Sort results">
+            <option value="rating">Sort: Rating</option>
+            <option value="popularity">Sort: Popularity</option>
+            <option value="newest">Sort: Newest</option>
+            <option value="oldest">Sort: Oldest</option>
+            <option value="title">Sort: Title A–Z</option>
+          </select>
+          <div class="view-toggle" role="group" aria-label="Switch view">
+            <button id="gridViewBtn" class="active" aria-label="Grid view" aria-pressed="true"><i class="bi bi-grid-3x3-gap"></i></button>
+            <button id="listViewBtn" aria-label="Compact list view" aria-pressed="false"><i class="bi bi-list-ul"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="movie-grid" id="discoverGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ANALYTICS
+  ============================================================ -->
+  <section class="page-section" id="analytics">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">Cinema, by the numbers.</h2>
+          <p class="section-sub">Aggregate statistics computed from the current movie collection.</p>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="analyticsStatGrid"></div>
+
+      <div class="chart-grid">
+        <div class="chart-card"><h4>Movies by year</h4><p class="chart-sub">Release volume over time</p><div id="chartByYear"></div></div>
+        <div class="chart-card"><h4>Average rating by year</h4><p class="chart-sub">Trend in critical reception</p><div id="chartRatingByYear"></div></div>
+        <div class="chart-card"><h4>Genre distribution</h4><p class="chart-sub">Share of titles per genre</p><div id="chartGenreDist"></div></div>
+        <div class="chart-card"><h4>Average rating by genre</h4><p class="chart-sub">Which genres score best</p><div id="chartRatingByGenre"></div></div>
+        <div class="chart-card"><h4>Language distribution</h4><p class="chart-sub">Titles per language</p><div id="chartLangDist"></div></div>
+        <div class="chart-card"><h4>Rating distribution</h4><p class="chart-sub">Spread across the collection</p><div id="chartRatingDist"></div></div>
+        <div class="chart-card full"><h4>Top rated movies</h4><p class="chart-sub">Highest-rated titles currently tracked</p><div id="chartTopRated"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       WATCHLIST
+  ============================================================ -->
+  <section class="page-section bg-alt" id="watchlist">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">Your watchlist</h2>
+          <p class="section-sub">Saved locally on this device for now.</p>
+        </div>
+        <select class="filter-select" id="watchlistSort" aria-label="Sort watchlist">
+          <option value="added">Sort: Recently added</option>
+          <option value="rating">Sort: Rating</option>
+          <option value="title">Sort: Title A–Z</option>
+        </select>
+      </div>
+      <div class="movie-grid" id="watchlistGrid"></div>
+      <div class="empty-state" id="watchlistEmpty" style="display:none;">
+        <i class="bi bi-bookmark-heart"></i>
+        <h3 class="font-display">Your watchlist is empty.</h3>
+        <p>Save films here so you don't lose the good ones.</p>
+        <a href="#discover" class="btn btn-primary btn-sm">Browse movies</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================================================
+     MOVIE DETAILS MODAL
+============================================================ -->
+<div class="modal-overlay" id="movieModalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="movie-modal" id="movieModal">
+    <div class="modal-visual" id="modalVisual">
+      <button class="modal-close" id="modalCloseBtn" aria-label="Close details"><i class="bi bi-x-lg"></i></button>
+      <div class="modal-visual-content">
+        <h2 id="modalTitle" class="font-display">—</h2>
+        <div class="modal-meta" id="modalMeta">—</div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-stat-row">
+        <div class="modal-stat"><div class="lbl">Rating</div><div class="val" id="modalRating">—</div></div>
+        <div class="modal-stat"><div class="lbl">Votes</div><div class="val" id="modalVotes">—</div></div>
+        <div class="modal-stat"><div class="lbl">Runtime</div><div class="val" id="modalRuntime">—</div></div>
+        <div class="modal-stat"><div class="lbl">Certificate</div><div class="val" id="modalCert">—</div></div>
+      </div>
+      <div class="modal-section">
+        <h4>Director</h4>
+        <p id="modalDirector">—</p>
+      </div>
+      <div class="modal-section">
+        <h4>Top cast</h4>
+        <div class="modal-cast" id="modalCast"></div>
+      </div>
+      <div class="modal-section">
+        <h4>About</h4>
+        <p id="modalDescription">—</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="modalWatchlistBtn"><i class="bi bi-bookmark-plus"></i> Add to Watchlist</button>
+        <a href="#analytics" class="btn btn-ghost" id="modalAnalyticsBtn">View Analytics</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     FOOTER
+============================================================ -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a href="#home" class="logo" aria-label="Popcorn Picks home">
+          <span class="logo-mark" aria-hidden="true"></span>
+          <span class="logo-text font-display">Popcorn <span>Picks</span></span>
+        </a>
+        <p>A movie discovery and analytics project exploring Indian cinema through ratings, genres and trends.</p>
+      </div>
+      <div class="footer-links">
+        <div>
+          <h5>Explore</h5>
+          <a href="#discover">Discover</a>
+          <a href="#picks">Movies</a>
+          <a href="#genres">Genres</a>
+        </div>
+        <div>
+          <h5>Data</h5>
+          <a href="#analytics">Analytics</a>
+          <a href="#watchlist">Watchlist</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Built as a Python data analysis project.</span>
+      <span id="footerYear">© 2026 Popcorn Picks</span>
+    </div>
+  </div>
+</footer>
+
+
+<script>
+/* ============================================================
+   THEME CONTROLLER
+   Persists the user's choice in localStorage.
+   ============================================================ */
+(function () {
+  const root = document.documentElement;
+  const toggle = document.getElementById('themeToggle');
+  if (!toggle) return;
+
+  const savedTheme = localStorage.getItem('popcorn-picks-theme');
+  const systemPrefersLight = window.matchMedia &&
+    window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  function setTheme(theme) {
+    root.setAttribute('data-theme', theme);
+
+    const isLight = theme === 'light';
+    toggle.innerHTML = isLight
+      ? '<i class="bi bi-sun-fill" aria-hidden="true"></i>'
+      : '<i class="bi bi-moon-stars-fill" aria-hidden="true"></i>';
+
+    toggle.setAttribute(
+      'aria-label',
+      isLight ? 'Switch to dark mode' : 'Switch to light mode'
+    );
+    toggle.setAttribute(
+      'title',
+      isLight ? 'Switch to dark mode' : 'Switch to light mode'
+    );
+
+    localStorage.setItem('popcorn-picks-theme', theme);
+
+    // Update Plotly charts if the existing app.js has created them.
+    if (window.Plotly) {
+      document.querySelectorAll('[id^="chart"]').forEach(function (el) {
+        if (el.data && el.layout) {
+          const textColor = isLight ? '#1d1d1f' : '#f1efe9';
+          const gridColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)';
+          try {
+            Plotly.relayout(el, {
+              'font.color': textColor,
+              'paper_bgcolor': 'rgba(0,0,0,0)',
+              'plot_bgcolor': 'rgba(0,0,0,0)',
+              'xaxis.gridcolor': gridColor,
+              'yaxis.gridcolor': gridColor
+            });
+          } catch (e) {}
+        }
+      });
+    }
+  }
+
+  setTheme(savedTheme || (systemPrefersLight ? 'light' : 'dark'));
+
+  toggle.addEventListener('click', function () {
+    const current = root.getAttribute('data-theme') || 'dark';
+    setTheme(current === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+<script src="app.js"></script>
+
+</body>
+</html>
