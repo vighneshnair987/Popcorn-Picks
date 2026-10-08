@@ -4,9 +4,8 @@ import json
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import text
 
-from database import db
+from data_source import analytics_frame
 
 
 MIN_VOTES = 100
@@ -16,17 +15,8 @@ TOP_N = 20
 
 
 def load_movie_frame():
-    """Load movie and normalized genre rows through SQLAlchemy."""
-    query = text(
-        """
-        SELECT m.id, m.title, m.year, m.rating, m.votes, m.language,
-               m.runtime, m.director, g.name AS genre
-        FROM movies AS m
-        LEFT JOIN movie_genres AS mg ON mg.movie_id = m.id
-        LEFT JOIN genres AS g ON g.id = mg.genre_id
-        """
-    )
-    frame = pd.read_sql_query(query, db.engine)
+    """Load movie and normalized genre rows from the production CSV."""
+    frame = analytics_frame()
     for column in ("year", "rating", "votes", "runtime"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     return frame
@@ -98,7 +88,7 @@ def top_movie_records(movies, limit=TOP_N):
     qualified = rating_eligible(movies)
     return records(
         qualified.sort_values(["rating", "votes", "title"], ascending=[False, False, True]).head(limit),
-        ["id", "title", "year", "rating", "votes", "language"],
+        ["id", "title", "year", "rating", "votes", "language", "poster_path"],
     )
 
 
@@ -106,7 +96,7 @@ def popular_movie_records(movies, limit=TOP_N):
     qualified = movies[movies["votes"].notna()]
     return records(
         qualified.sort_values(["votes", "rating", "title"], ascending=[False, False, True]).head(limit),
-        ["id", "title", "year", "rating", "votes", "language"],
+        ["id", "title", "year", "rating", "votes", "language", "poster_path"],
     )
 
 
@@ -148,6 +138,7 @@ def summary(frame):
             "id": integer(highest_movie["id"]), "title": highest_movie["title"],
             "year": integer(highest_movie["year"]), "rating": number(highest_movie["rating"], 2),
             "votes": integer(highest_movie["votes"]),
+            "poster_path": highest_movie.get("poster_path") or None,
         },
         "most_common_genre": None if common_genre is None else {"name": common_genre["genre"], "movies": int(common_genre["movies"])},
         "most_represented_language": None if common_language is None else {"name": common_language["language"], "movies": int(common_language["movies"])},
@@ -211,7 +202,7 @@ def trending(frame):
         "recent_year_cutoff": None if latest_year is None else latest_year - RECENT_YEARS,
         "minimum_votes": MIN_VOTES,
         "weights": {"rating": 0.45, "popularity": 0.30, "recency": 0.25},
-        "data": records(recent, ["id", "title", "year", "rating", "votes", "language", "trend_score", "rating_component", "popularity_component", "recency_component"]),
+        "data": records(recent, ["id", "title", "year", "rating", "votes", "language", "poster_path", "trend_score", "rating_component", "popularity_component", "recency_component"]),
     }
 
 
@@ -275,7 +266,7 @@ def recommendations(frame, movie_id, limit=10):
         ],
         axis=1,
     )
-    result = records(candidates, ["id", "title", "year", "rating", "votes", "language", "recommendation_score", "shared_genres", "match_reasons"])
+    result = records(candidates, ["id", "title", "year", "rating", "votes", "language", "poster_path", "recommendation_score", "shared_genres", "match_reasons"])
     return {
         "definition": "50% shared genres, 20% same language, 15% rating similarity, and 15% release-period similarity.",
         "source_movie_id": movie_id,

@@ -259,9 +259,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .movie-card:hover, .movie-card:focus-visible { transform: translateY(-4px); border-color: var(--glass-border-strong); box-shadow: var(--shadow-soft); }
 
 .movie-card-visual {
-  position: relative; height: 148px; display: flex; align-items: flex-end; padding: 12px;
+  position: relative; aspect-ratio: 2 / 3; display: flex; align-items: flex-end; padding: 12px;
   overflow: hidden;
 }
+.movie-poster { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.movie-poster-placeholder { position: absolute; inset: 0; z-index: 0; display: grid; place-items: center; padding: 16px; color: var(--text-muted); text-align: center; font-size: .85rem; background: var(--bg-elevated); }
+.movie-card-visual:not(:has(.movie-poster)) .movie-card-icon { z-index: 1; }
+.movie-poster-placeholder ~ .movie-card-icon { display: none; }
+.movie-row-visual { width: 64px; height: 96px; overflow: hidden; border-radius: var(--radius-sm); }
+.movie-row-poster { display: block; width: 100%; height: 100%; object-fit: cover; }
+.movie-row-poster-placeholder { display: grid; width: 100%; height: 100%; place-items: center; padding: 4px; color: var(--text-muted); text-align: center; font-size: .6rem; background: var(--bg-elevated); }
 .movie-card-visual::before {
   content: ""; position: absolute; inset: 0; opacity: 0.85; transition: opacity 0.25s var(--ease);
 }
@@ -304,7 +311,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   background: var(--glass-bg); cursor: pointer; transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
 }
 .movie-row:hover { background: var(--glass-bg-strong); border-color: var(--glass-border-strong); }
-.movie-row-visual { width: 64px; height: 46px; border-radius: 6px; position: relative; overflow: hidden; }
+.movie-row-visual { width: 64px; height: 96px; border-radius: var(--radius-sm); position: relative; overflow: hidden; }
 .movie-row-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 0.95rem; }
 .movie-row-meta { color: var(--text-muted); font-size: 0.78rem; }
 .movie-row-rating { color: var(--accent); font-weight: 700; font-size: 0.85rem; }
@@ -394,8 +401,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
   animation: slideUp 0.24s var(--ease);
 }
-.modal-visual { height: 190px; position: relative; display: flex; align-items: flex-end; padding: 22px; }
+.modal-visual { min-height: 210px; position: relative; display: flex; align-items: flex-end; padding: 22px 22px 22px 148px; }
 .modal-visual::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(15,16,20,0.9)); }
+.modal-poster { position: absolute; z-index: 1; left: 22px; bottom: 18px; width: 108px; height: 162px; object-fit: cover; border-radius: var(--radius-sm); background: var(--bg-elevated); box-shadow: var(--shadow-soft); }
+.modal-visual > .movie-poster-placeholder { z-index: 1; left: 22px; top: auto; bottom: 18px; width: 108px; height: 162px; border-radius: var(--radius-sm); }
 .modal-close {
   position: absolute; top: 14px; right: 14px; z-index: 2; width: 34px; height: 34px; border-radius: 50%;
   background: rgba(10,10,12,0.55); border: 1px solid rgba(255,255,255,0.15); color: #fff; display: grid; place-items: center;
@@ -412,11 +421,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .modal-section h4 { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; font-family: 'Inter', sans-serif; }
 .modal-section p { color: var(--text-secondary); font-size: 0.92rem; }
 .modal-cast { display: flex; gap: 8px; flex-wrap: wrap; }
+.watch-provider-groups { display: grid; gap: 12px; }
+.watch-provider-group h5 { color: var(--text-muted); font-size: 0.72rem; font-weight: 600; margin-bottom: 6px; }
+.watch-provider-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.watch-provider { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 0.8rem; }
+.watch-provider img { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
+.watch-options-link { display: inline-block; margin-top: 10px; font-size: 0.82rem; }
 .modal-actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
 
 @media (max-width: 560px) {
   .modal-overlay { padding: 0; align-items: flex-end; }
   .movie-modal { max-width: 100%; max-height: 92vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .modal-visual { min-height: 180px; padding-left: 126px; }
+  .modal-poster, .modal-visual > .movie-poster-placeholder { left: 16px; bottom: 14px; width: 90px; height: 135px; }
 }
 
 /* ============================================================
@@ -633,6 +650,41 @@ html[data-theme="light"] .modal-visual::after {
   font-size: 1rem;
 }
 
+/* Movie Face-Off */
+.faceoff-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 22px; }
+.faceoff-choice, .faceoff-movie { min-width: 0; padding: 20px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); }
+.faceoff-choice label { display: block; color: var(--text-secondary); font-size: .82rem; margin-bottom: 9px; }
+.faceoff-search-wrap { position: relative; }
+.faceoff-search { width: 100%; padding: 11px 13px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: var(--radius-md); }
+.faceoff-search-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20; max-height: 250px; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--glass-border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-soft); }
+.faceoff-search-results:empty { display: none; }
+.faceoff-result { display: block; width: 100%; padding: 10px 12px; color: var(--text-primary); text-align: left; background: none; border: 0; }
+.faceoff-result:hover { background: var(--glass-bg-strong); }
+.faceoff-result small { display: block; color: var(--text-muted); }
+.faceoff-preview { min-height: 76px; display: grid; place-items: center; margin-top: 14px; color: var(--text-muted); text-align: center; border: 1px dashed var(--glass-border-strong); border-radius: var(--radius-md); }
+.faceoff-vs { color: var(--accent); font: 700 1.3rem 'Fraunces', serif; }
+.faceoff-actions { display: flex; justify-content: center; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.faceoff-message { min-height: 1.5em; margin-top: 9px; color: var(--text-muted); text-align: center; font-size: .84rem; }
+.faceoff-comparison { margin-top: 28px; }
+.faceoff-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 18px; }
+.faceoff-movie { display: flex; align-items: center; gap: 14px; }
+.faceoff-poster { width: 68px; height: 96px; flex: none; object-fit: cover; border-radius: var(--radius-sm); background: var(--bg-elevated); }
+.faceoff-poster-placeholder { display: grid; place-items: center; color: var(--text-muted); font-size: 1.5rem; }
+.faceoff-movie h3 { font-size: 1.08rem; overflow-wrap: anywhere; }
+.faceoff-table-wrap { overflow-x: auto; border: 1px solid var(--glass-border); border-radius: var(--radius-md); }
+.faceoff-table { width: 100%; border-collapse: collapse; }
+.faceoff-table th, .faceoff-table td { padding: 11px 14px; border-bottom: 1px solid var(--glass-border); text-align: center; }
+.faceoff-table tr:last-child th, .faceoff-table tr:last-child td { border-bottom: 0; }
+.faceoff-table th:first-child { color: var(--text-secondary); text-align: left; font-weight: 500; }
+.faceoff-table td { min-width: 130px; }
+@media (max-width: 700px) {
+  .faceoff-layout { grid-template-columns: 1fr; gap: 12px; }
+  .faceoff-vs { text-align: center; }
+  .faceoff-pair { grid-template-columns: 1fr; }
+  .faceoff-pair .faceoff-vs { align-self: center; }
+  .faceoff-table { min-width: 480px; }
+}
+
 </style>
 </head>
 <body>
@@ -721,6 +773,45 @@ html[data-theme="light"] .modal-visual::after {
           <div class="hero-stat"><div class="num" id="heroStatTotal">—</div><div class="lbl">Movies tracked</div></div>
           <div class="hero-stat"><div class="num" id="heroStatGenres">—</div><div class="lbl">Genres covered</div></div>
           <div class="hero-stat"><div class="num" id="heroStatLangs">—</div><div class="lbl">Languages</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       MOVIE FACE-OFF
+  ============================================================ -->
+  <section class="page-section tight" id="faceoff">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2 class="section-heading">⚔️ Movie Face-Off</h2>
+          <p class="section-sub">Can't decide? Put two movies head-to-head.</p>
+        </div>
+      </div>
+      <div class="faceoff-layout" id="faceoffSelection">
+        <div class="faceoff-choice">
+          <label for="faceoffSearch1">Movie 1</label>
+          <div class="faceoff-search-wrap"><input class="faceoff-search" id="faceoffSearch1" type="search" placeholder="Search movies…" autocomplete="off" aria-label="Search for the first movie"><div class="faceoff-search-results" id="faceoffResults1" role="listbox"></div></div>
+          <div class="faceoff-preview" id="faceoffPreview1">🎬 Choose a movie</div>
+        </div>
+        <div class="faceoff-vs" aria-hidden="true">VS</div>
+        <div class="faceoff-choice">
+          <label for="faceoffSearch2">Movie 2</label>
+          <div class="faceoff-search-wrap"><input class="faceoff-search" id="faceoffSearch2" type="search" placeholder="Search movies…" autocomplete="off" aria-label="Search for the second movie"><div class="faceoff-search-results" id="faceoffResults2" role="listbox"></div></div>
+          <div class="faceoff-preview" id="faceoffPreview2">🎬 Choose a movie</div>
+        </div>
+      </div>
+      <div class="faceoff-actions" id="faceoffSelectionActions">
+        <button class="btn btn-primary" id="faceoffCompare" type="button" disabled>⚔️ Compare Movies</button>
+      </div>
+      <p class="faceoff-message" id="faceoffMessage" aria-live="polite">Choose two movies to start your face-off.</p>
+      <div class="faceoff-comparison" id="faceoffComparison" hidden>
+        <div class="faceoff-pair" id="faceoffPair"></div>
+        <div class="faceoff-table-wrap"><table class="faceoff-table"><tbody id="faceoffTableBody"></tbody></table></div>
+        <div class="faceoff-actions">
+          <button class="btn btn-ghost btn-sm" id="faceoffSwap" type="button">⇄ Swap</button>
+          <button class="btn btn-ghost btn-sm" id="faceoffClear" type="button">Clear Comparison</button>
         </div>
       </div>
     </div>
@@ -941,6 +1032,10 @@ html[data-theme="light"] .modal-visual::after {
       <div class="modal-section">
         <h4>About</h4>
         <p id="modalDescription">—</p>
+      </div>
+      <div class="modal-section" id="watchProvidersSection">
+        <h4>Where to Watch <span style="font-weight:400;color:var(--text-muted);">· India</span></h4>
+        <div id="watchProvidersContent" aria-live="polite">Checking availability…</div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-primary" id="modalWatchlistBtn"><i class="bi bi-bookmark-plus"></i> Add to Watchlist</button>

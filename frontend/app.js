@@ -10,6 +10,8 @@
    ================================================================== */
 const state = {
   allMovies: [],
+  featuredSeasons: [],
+  homeMovies: [],
   discoverResults: [],
   view: 'grid',              // 'grid' | 'list'
   sortBy: 'rating',
@@ -25,6 +27,8 @@ const state = {
   languages: [],
   discoverRequestId: 0,
 };
+const watchProviderCache = new Map();
+const faceoffState = { selected: [null, null], searches: [0, 0], metadata: new Map() };
 
 const GENRE_CLASS = {
   Action: 'genre-action', Romance: 'genre-romance', Thriller: 'genre-thriller',
@@ -41,11 +45,30 @@ const GENRE_ICON = {
 
 function genreClass(genres) { return GENRE_CLASS[genres[0]] || 'genre-drama'; }
 function genreIcon(genres) { return GENRE_ICON[genres[0]] || 'bi-film'; }
+function posterUrl(path, size = 'w500') {
+  return typeof path === 'string' && /^\/[A-Za-z0-9_./-]+$/.test(path) && !path.includes('..')
+    ? `https://image.tmdb.org/t/p/${size}${path}` : '';
+}
+function posterFallback(label = 'Poster unavailable') {
+  const placeholder = document.createElement('div');
+  placeholder.className = 'movie-poster-placeholder';
+  placeholder.textContent = label;
+  placeholder.setAttribute('role', 'img');
+  placeholder.setAttribute('aria-label', label);
+  return placeholder;
+}
+function bindPosterFallbacks(container) {
+  container.querySelectorAll('img[data-poster]').forEach(image => {
+    image.addEventListener('error', () => image.replaceWith(posterFallback()), { once: true });
+  });
+}
 
 /* ==================================================================
   2. DATA
   ================================================================== */
-const API_BASE = window.POPCORN_PICKS_API_URL || 'http://127.0.0.1:5000/api';
+const isLocalFrontend = window.location.protocol === 'file:'
+  || (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '5000');
+const API_BASE = window.POPCORN_PICKS_API_URL || (isLocalFrontend ? 'http://127.0.0.1:5000/api' : '/api');
 
 async function apiRequest(path, params = {}) {
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value != null));
@@ -67,6 +90,176 @@ async function fetchLanguages() { return (await apiRequest('/languages')).data; 
 async function fetchAnalytics() { return (await apiRequest('/analytics')).data; }
 async function fetchTrending() { return (await apiRequest('/trending')).data; }
 
+function faceoffEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+function faceoffMovieMeta(movie) {
+  return [movie.media_type === 'tv' ? 'TV Series' : null, movie.year, movie.language, movie.runtime ? `${movie.runtime} min` : null].filter(Boolean).join(' · ') || 'Movie details';
+}
+function setFaceoffMessage(message) {
+  document.getElementById('faceoffMessage').textContent = message;
+}
+function updateFaceoffSelection() {
+  faceoffState.selected.forEach((movie, index) => {
+    document.getElementById(`faceoffPreview${index + 1}`).textContent = movie ? `${movie.title} · ${faceoffMovieMeta(movie)}` : '🎬 Choose a movie';
+  });
+  document.getElementById('faceoffCompare').disabled = !faceoffState.selected[0] || !faceoffState.selected[1] || faceoffState.selected[0].id === faceoffState.selected[1].id;
+}
+function faceoffValue(value, fallback = 'N/A') {
+  return value == null || value === '' || (typeof value === 'number' && !Number.isFinite(value)) ? fallback : String(value);
+}
+function formatFaceoffRuntime(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return 'N/A';
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return hours ? `${hours}h ${remaining}m` : `${remaining}m`;
+}
+function renderFaceoffComparison(movies) {
+  const pair = document.getElementById('faceoffPair');
+  pair.replaceChildren();
+  movies.forEach(movie => {
+    const meta = faceoffState.metadata.get(movie.id) || {};
+    const card = document.createElement('div');
+    card.className = 'faceoff-movie';
+    if (meta.poster_path) {
+      const poster = document.createElement('img');
+      poster.className = 'faceoff-poster';
+      poster.src = `https://image.tmdb.org/t/p/w185${meta.poster_path}`;
+      poster.alt = `${movie.title} poster`;
+      poster.loading = 'lazy';
+      poster.onerror = () => { poster.replaceWith(makeFaceoffPosterPlaceholder()); };
+      card.append(poster);
+    } else card.append(makeFaceoffPosterPlaceholder());
+    const title = document.createElement('h3');
+    title.textContent = movie.title;
+    card.append(title);
+    pair.append(card);
+  });
+  const vs = document.createElement('div');
+  vs.className = 'faceoff-vs';
+  vs.textContent = 'VS';
+  pair.insertBefore(vs, pair.children[1] || null);
+
+  const rows = [
+    ['Rating', movie => movie.rating == null ? 'N/A' : `${Number(movie.rating).toFixed(1)} / 10`],
+    ['Votes', movie => movie.votes == null ? 'N/A' : formatVotes(movie.votes)],
+    ['Release year', movie => faceoffValue(movie.year)],
+    ['Runtime', movie => formatFaceoffRuntime(movie.runtime)],
+    ['Genres', movie => Array.isArray(movie.genres) && movie.genres.length ? movie.genres.join(', ') : 'N/A'],
+    ['Language', movie => faceoffValue(movie.language)],
+    ['Popularity', movie => { const value = faceoffState.metadata.get(movie.id)?.popularity; return value == null ? 'N/A' : Number(value).toFixed(1); }],
+    ['Overview', movie => faceoffValue(movie.description)],
+  ];
+  document.getElementById('faceoffTableBody').innerHTML = rows.map(([label, format]) => `<tr><th scope="row">${label}</th>${movies.map(movie => `<td>${faceoffEscape(format(movie))}</td>`).join('')}</tr>`).join('');
+}
+function makeFaceoffPosterPlaceholder() {
+  const placeholder = document.createElement('div');
+  placeholder.className = 'faceoff-poster faceoff-poster-placeholder';
+  placeholder.textContent = '🎬';
+  placeholder.setAttribute('aria-label', 'Poster unavailable');
+  return placeholder;
+}
+async function compareFaceoffMovies() {
+  const movies = [...faceoffState.selected];
+  if (!movies[0] || !movies[1] || movies[0].id === movies[1].id) return;
+  const comparison = document.getElementById('faceoffComparison');
+  comparison.hidden = false;
+  setFaceoffMessage('Loading additional movie details…');
+  await Promise.all(movies.map(async movie => {
+    if (faceoffState.metadata.has(movie.id)) return;
+    try {
+      const metadata = await apiRequest(`/movies/${movie.id}/faceoff-metadata`);
+      faceoffState.metadata.set(movie.id, metadata.data || {});
+    } catch (_error) {
+      faceoffState.metadata.set(movie.id, {});
+    }
+  }));
+  if (faceoffState.selected[0]?.id !== movies[0].id || faceoffState.selected[1]?.id !== movies[1].id) return;
+  renderFaceoffComparison(movies);
+  setFaceoffMessage('');
+}
+function clearFaceoff() {
+  faceoffState.selected = [null, null];
+  for (let index = 0; index < 2; index += 1) {
+    document.getElementById(`faceoffSearch${index + 1}`).value = '';
+    document.getElementById(`faceoffResults${index + 1}`).replaceChildren();
+  }
+  document.getElementById('faceoffComparison').hidden = true;
+  document.getElementById('faceoffPair').replaceChildren();
+  document.getElementById('faceoffTableBody').replaceChildren();
+  updateFaceoffSelection();
+  setFaceoffMessage('Choose two movies to start your face-off.');
+}
+function bindFaceoffEvents() {
+  [0, 1].forEach(index => {
+    const input = document.getElementById(`faceoffSearch${index + 1}`);
+    const results = document.getElementById(`faceoffResults${index + 1}`);
+    input.addEventListener('input', () => {
+      const sequence = ++faceoffState.searches[index];
+      faceoffState.selected[index] = null;
+      document.getElementById(`faceoffComparison`).hidden = true;
+      updateFaceoffSelection();
+      const term = input.value.trim();
+      results.replaceChildren();
+      if (term.length < 2) {
+        setFaceoffMessage('Choose two movies to start your face-off.');
+        return;
+      }
+      setFaceoffMessage('Searching movies…');
+      window.setTimeout(async () => {
+        if (sequence !== faceoffState.searches[index]) return;
+        try {
+          const response = await searchMovies(term, { limit: 8 });
+          if (sequence !== faceoffState.searches[index]) return;
+          const movies = response.data || [];
+          if (!movies.length) {
+            results.textContent = 'No matching movies found.';
+            setFaceoffMessage('No matching movies found.');
+            return;
+          }
+          results.replaceChildren(...movies.map(movie => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'faceoff-result';
+            button.setAttribute('role', 'option');
+            button.dataset.movie = JSON.stringify(movie);
+            const title = document.createElement('span');
+            title.textContent = movie.title;
+            const meta = document.createElement('small');
+            meta.textContent = faceoffMovieMeta(movie);
+            button.append(title, meta);
+            return button;
+          }));
+          setFaceoffMessage('Select one movie from the search results.');
+        } catch (_error) {
+          results.textContent = 'Movie search could not be completed.';
+          setFaceoffMessage('Movie search could not be completed.');
+        }
+      }, 250);
+    });
+    results.addEventListener('click', event => {
+      const button = event.target.closest('.faceoff-result');
+      if (!button) return;
+      faceoffState.selected[index] = normalizeMovie(JSON.parse(button.dataset.movie));
+      input.value = faceoffState.selected[index].title;
+      results.replaceChildren();
+      document.getElementById('faceoffComparison').hidden = true;
+      updateFaceoffSelection();
+      if (faceoffState.selected[0]?.id === faceoffState.selected[1]?.id) setFaceoffMessage('Choose two different movies for a face-off.');
+      else setFaceoffMessage('Choose two movies to start your face-off.');
+    });
+  });
+  document.getElementById('faceoffCompare').addEventListener('click', compareFaceoffMovies);
+  document.getElementById('faceoffSwap').addEventListener('click', () => {
+    faceoffState.selected.reverse();
+    [document.getElementById('faceoffSearch1').value, document.getElementById('faceoffSearch2').value] = [faceoffState.selected[0]?.title || '', faceoffState.selected[1]?.title || ''];
+    updateFaceoffSelection();
+    renderFaceoffComparison(faceoffState.selected);
+  });
+  document.getElementById('faceoffClear').addEventListener('click', clearFaceoff);
+}
+
 function displayValue(value, fallback = 'Unknown') { return value == null || value === '' ? fallback : value; }
 function displayRating(value) { return value == null ? 'N/A' : Number(value).toFixed(1); }
 function displayNumber(value) { return value == null ? 'N/A' : formatVotes(value); }
@@ -82,28 +275,37 @@ function normalizeMovie(movie) {
    3. INITIALIZATION
    ================================================================== */
 async function init() {
-  const [movies, analytics, genres, languages] = await Promise.all([fetchMovies(), fetchAnalytics(), fetchGenres(), fetchLanguages()]);
-  state.allMovies = movies.map(normalizeMovie);
-  state.analytics = analytics;
-  state.genres = genres;
-  state.languages = languages;
-  state.apiTotal = analytics.total_movies;
-  state.discoverResults = [...state.allMovies];
-  loadWatchlist();
+  try {
+    const [movies, popularMovies, analytics, genres, languages, strangerThings] = await Promise.all([
+      fetchMovies(), fetchMovies({ limit: 20, sort: 'votes_desc' }), fetchAnalytics(), fetchGenres(), fetchLanguages(), searchMovies('Stranger Things', { limit: 100 }),
+    ]);
+    state.allMovies = movies.map(normalizeMovie);
+    state.featuredSeasons = (strangerThings.data || []).map(normalizeMovie).filter(movie => movie.media_type === 'tv_season');
+    state.homeMovies = popularMovies.map(normalizeMovie);
+    state.analytics = analytics;
+    state.genres = genres;
+    state.languages = languages;
+    state.apiTotal = analytics.total_movies;
+    state.discoverResults = [...state.allMovies];
+    loadWatchlist();
 
-  populateFilterOptions();
-  renderHero();
-  renderTonightsPicks();
-  renderGenreExplorer();
-  renderTrendInsights();
-  applyDiscoverPipeline();
-  renderWatchlist();
-  renderAnalytics();
-  updateWatchlistCount();
+    populateFilterOptions();
+    renderHero();
+    renderTonightsPicks();
+    renderGenreExplorer();
+    renderTrendInsights();
+    applyDiscoverPipeline();
+    renderWatchlist();
+    renderAnalytics();
+    updateWatchlistCount();
 
-  document.getElementById('footerYear').textContent = `© ${new Date().getFullYear()} Popcorn Picks`;
+    document.getElementById('footerYear').textContent = `© ${new Date().getFullYear()} Popcorn Picks`;
 
-  bindEvents();
+    bindEvents();
+  } catch (error) {
+    console.error('Popcorn Picks could not connect to the API.', error);
+    document.getElementById('resultCount').textContent = `Could not connect to the backend: ${error.message}`;
+  }
 }
 document.addEventListener('DOMContentLoaded', init);
 
@@ -120,6 +322,7 @@ function movieCardHTML(m) {
   return `
     <article class="movie-card fade-up" data-id="${m.id}" tabindex="0" role="button" aria-label="View details for ${m.title}">
       <div class="movie-card-visual ${genreClass(m.genres)}">
+        ${posterUrl(m.poster_path) ? `<img class="movie-poster" data-poster src="${posterUrl(m.poster_path)}" alt="${faceoffEscape(m.title)} poster" loading="lazy">` : '<div class="movie-poster-placeholder" role="img" aria-label="Poster unavailable">Poster unavailable</div>'}
         <span class="movie-card-rating"><i class="bi bi-star-fill"></i> ${displayRating(m.rating)}</span>
         <button class="watchlist-toggle ${inWatchlist ? 'active' : ''}" data-id="${m.id}" aria-label="${inWatchlist ? 'Remove from' : 'Add to'} watchlist" aria-pressed="${inWatchlist}">
           <i class="bi ${inWatchlist ? 'bi-bookmark-check-fill' : 'bi-bookmark-plus'}"></i>
@@ -140,7 +343,7 @@ function movieRowHTML(m) {
   const inWatchlist = state.watchlist.includes(m.id);
   return `
     <article class="movie-row fade-up" data-id="${m.id}" tabindex="0" role="button" aria-label="View details for ${m.title}">
-      <div class="movie-row-visual ${genreClass(m.genres)}"></div>
+      <div class="movie-row-visual ${genreClass(m.genres)}">${posterUrl(m.poster_path) ? `<img class="movie-row-poster" data-poster src="${posterUrl(m.poster_path, 'w185')}" alt="${faceoffEscape(m.title)} poster" loading="lazy">` : '<div class="movie-row-poster-placeholder">Poster unavailable</div>'}</div>
       <div>
         <div class="movie-row-title">${m.title}</div>
         <div class="movie-row-meta">${displayValue(m.year)} · ${displayValue(m.language)} · ${m.genres.join(', ') || 'Uncategorized'}</div>
@@ -165,13 +368,14 @@ function renderMovies(container, movies, view = 'grid') {
   }
   container.classList.toggle('compact', view === 'list');
   container.innerHTML = movies.map(m => (view === 'list' ? movieRowHTML(m) : movieCardHTML(m))).join('');
+  bindPosterFallbacks(container);
 }
 
 function renderHero() {
-  const featured = state.allMovies.find(movie => movie.rating != null) || state.allMovies[0];
+  const featured = state.homeMovies.find(movie => movie.rating != null) || state.homeMovies[0];
   if (!featured) return;
   document.getElementById('heroFeaturedTitle').textContent = featured.title;
-  document.getElementById('heroFeaturedMeta').textContent = `${displayValue(featured.year)} · ${displayValue(featured.language)} · ${displayValue(featured.runtime, 'N/A')} min`;
+  document.getElementById('heroFeaturedMeta').textContent = `${displayValue(featured.year)} · ${displayValue(featured.language)} · ${displayValue(featured.runtime, 'N/A')} min${featured.media_type === 'tv' ? ' / episode' : ''}`;
   document.getElementById('heroFeaturedTags').innerHTML = featured.genres.map(g => `<span class="tag">${g}</span>`).join('');
   document.querySelector('.hero-rating').innerHTML = `<i class="bi bi-star-fill"></i> ${displayRating(featured.rating)}`;
 
@@ -181,7 +385,11 @@ function renderHero() {
 }
 
 function renderTonightsPicks() {
-  const picks = [...state.allMovies].filter(movie => movie.rating != null).sort((a, b) => b.rating - a.rating).slice(0, 8);
+  const picks = state.homeMovies.filter(movie => movie.rating != null).slice(0, 8);
+  const seasonFour = state.featuredSeasons.find(movie =>
+    Number(movie.season_number ?? movie.title.match(/season\s+(\d+)/i)?.[1]) === 4
+  );
+  if (seasonFour) picks.push(seasonFour);
   renderMovies(document.getElementById('tonightsPicksGrid'), picks, 'grid');
 }
 
@@ -356,7 +564,7 @@ function refreshWatchlistButtons() {
 
 function renderWatchlist() {
   const sortBy = document.getElementById('watchlistSort').value;
-  let movies = state.allMovies.filter(m => state.watchlist.includes(m.id));
+  let movies = [...state.allMovies, ...state.featuredSeasons].filter(m => state.watchlist.includes(m.id));
   if (sortBy === 'rating') movies = sortMovies(movies, 'rating');
   else if (sortBy === 'title') movies = sortMovies(movies, 'title');
   else movies = movies.sort((a, b) => state.watchlist.indexOf(b.id) - state.watchlist.indexOf(a.id));
@@ -379,17 +587,33 @@ async function openMovieModal(id) {
   state.activeMovieId = m.id;
 
   document.getElementById('modalTitle').textContent = m.title;
-  document.getElementById('modalMeta').textContent = `${displayValue(m.year)} · ${m.genres.join(', ') || 'Uncategorized'} · ${displayValue(m.language)}`;
+  document.getElementById('modalMeta').textContent = `${m.media_type === 'tv_season' ? `TV Season ${m.season_number} · ` : m.media_type === 'tv' ? 'TV Series · ' : ''}${displayValue(m.year)} · ${m.genres.join(', ') || 'Uncategorized'} · ${displayValue(m.language)}`;
   document.getElementById('modalRating').innerHTML = `<i class="bi bi-star-fill" style="color:var(--accent);"></i> ${displayRating(m.rating)}`;
   document.getElementById('modalVotes').textContent = displayNumber(m.votes);
-  document.getElementById('modalRuntime').textContent = m.runtime == null ? 'N/A' : `${m.runtime} min`;
+  document.getElementById('modalRuntime').textContent = m.runtime == null ? 'N/A' : `${m.runtime} min${m.media_type === 'tv' ? ' / episode' : ''}`;
+  document.querySelector('#modalRuntime').closest('.modal-stat').querySelector('.lbl').textContent = m.media_type === 'tv' ? 'Episode runtime' : 'Runtime';
+  document.querySelector('#modalCert').closest('.modal-stat').querySelector('.lbl').textContent = m.media_type === 'tv' ? 'Content rating' : 'Certificate';
   document.getElementById('modalCert').textContent = displayValue(m.certificate);
+  document.querySelector('#modalDirector').previousElementSibling.textContent = m.media_type === 'tv' ? 'Creators' : 'Director';
   document.getElementById('modalDirector').textContent = displayValue(m.director);
   document.getElementById('modalCast').innerHTML = m.cast.map(c => `<span class="tag">${c}</span>`).join('');
   document.getElementById('modalDescription').textContent = displayValue(m.description);
 
   const visual = document.getElementById('modalVisual');
   visual.className = `modal-visual ${genreClass(m.genres)}`;
+  visual.querySelector('.modal-poster')?.remove();
+  const modalPosterUrl = posterUrl(m.poster_path, 'w780');
+  const modalPoster = modalPosterUrl ? document.createElement('img') : posterFallback();
+  if (modalPosterUrl) {
+    modalPoster.className = 'modal-poster';
+    modalPoster.src = modalPosterUrl;
+    modalPoster.alt = `${m.title} poster`;
+    modalPoster.loading = 'eager';
+    modalPoster.addEventListener('error', () => modalPoster.replaceWith(posterFallback()), { once: true });
+  } else {
+    modalPoster.classList.add('modal-poster');
+  }
+  visual.prepend(modalPoster);
 
   syncModalWatchlistButton();
 
@@ -397,6 +621,86 @@ async function openMovieModal(id) {
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   document.getElementById('modalCloseBtn').focus();
+  loadWatchProviders(m.id);
+}
+
+async function loadWatchProviders(movieId) {
+  const content = document.getElementById('watchProvidersContent');
+  content.textContent = 'Checking availability…';
+
+  const cacheKey = String(movieId);
+  let request = watchProviderCache.get(cacheKey);
+  if (!request) {
+    request = apiRequest(`/movies/${movieId}/watch-providers`).then(response => response.data);
+    watchProviderCache.set(cacheKey, request);
+    request.catch(() => watchProviderCache.delete(cacheKey));
+  }
+
+  try {
+    const availability = await request;
+    if (state.activeMovieId !== movieId) return;
+    renderWatchProviders(content, availability);
+  } catch {
+    if (state.activeMovieId === movieId) content.textContent = 'Watch availability could not be loaded.';
+  }
+}
+
+function renderWatchProviders(container, availability) {
+  const categories = [
+    ['Streaming', availability.flatrate],
+    ['Rent', availability.rent],
+    ['Buy', availability.buy],
+  ];
+  const groups = categories.filter(([, providers]) => Array.isArray(providers) && providers.length);
+  if (!groups.length) {
+    container.textContent = 'No streaming information currently available in India.';
+    return;
+  }
+
+  container.replaceChildren();
+  const groupContainer = document.createElement('div');
+  groupContainer.className = 'watch-provider-groups';
+  for (const [category, providers] of groups) {
+    const group = document.createElement('div');
+    group.className = 'watch-provider-group';
+    const heading = document.createElement('h5');
+    heading.textContent = category;
+    const list = document.createElement('div');
+    list.className = 'watch-provider-list';
+    for (const provider of providers) {
+      const item = document.createElement('span');
+      item.className = 'watch-provider';
+      if (provider.logo_path) {
+        const logo = document.createElement('img');
+        logo.src = `https://image.tmdb.org/t/p/w92${provider.logo_path}`;
+        logo.alt = '';
+        logo.loading = 'lazy';
+        item.appendChild(logo);
+      }
+      const name = document.createElement('span');
+      name.textContent = provider.provider_name;
+      item.appendChild(name);
+      list.appendChild(item);
+    }
+    group.append(heading, list);
+    groupContainer.appendChild(group);
+  }
+  container.appendChild(groupContainer);
+
+  if (availability.link) {
+    try {
+      const watchUrl = new URL(availability.link);
+      if (watchUrl.protocol === 'https:' && watchUrl.hostname === 'www.themoviedb.org') {
+        const link = document.createElement('a');
+        link.className = 'btn btn-ghost watch-options-link';
+        link.href = watchUrl.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'View Options';
+        container.appendChild(link);
+      }
+    } catch {}
+  }
 }
 
 function syncModalWatchlistButton() {
@@ -688,4 +992,5 @@ function bindEvents() {
     });
   }, { rootMargin: '-40% 0px -50% 0px' });
   sections.forEach(s => observer.observe(s));
+  bindFaceoffEvents();
 }

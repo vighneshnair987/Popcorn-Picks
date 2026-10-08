@@ -1,12 +1,12 @@
 """Flask REST API for Popcorn Picks."""
 
-import math
 import os
+from pathlib import Path
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from sqlalchemy import asc, desc, func
-from sqlalchemy.exc import SQLAlchemyError
+import pandas as pd
+import requests
 
 from analytics import (
     genre_statistics,
@@ -20,18 +20,18 @@ from analytics import (
     year_statistics,
 )
 from database import db, get_database_uri
-from models import CastMember, Genre, Movie
+from data_source import load_movies, movie_to_dict
 
 
 SORTS = {
-    "rating_desc": desc(Movie.rating),
-    "rating_asc": asc(Movie.rating),
-    "votes_desc": desc(Movie.votes),
-    "votes_asc": asc(Movie.votes),
-    "year_desc": desc(Movie.year),
-    "year_asc": asc(Movie.year),
-    "title_asc": asc(Movie.title),
-    "title_desc": desc(Movie.title),
+    "rating_desc": ("rating", False),
+    "rating_asc": ("rating", True),
+    "votes_desc": ("votes", False),
+    "votes_asc": ("votes", True),
+    "year_desc": ("year", False),
+    "year_asc": ("year", True),
+    "title_asc": ("title", True),
+    "title_desc": ("title", False),
 }
 
 
@@ -58,23 +58,109 @@ def create_app(db_path=None):
             return paginated_response(query, filters["page"], filters["limit"])
         except ValueError as exc:
             return error_response(str(exc), 400)
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("The movie database could not be queried.", 500)
 
     @app.get("/api/movies/<movie_id>")
     def get_movie(movie_id):
         try:
             parsed_id = parse_integer(movie_id, "id", minimum=1)
-            movie = db.session.get(Movie, parsed_id)
-            if movie is None:
+            movies = load_movies()
+            matches = movies[movies["id"] == parsed_id]
+            if matches.empty:
                 return error_response("Movie not found.", 404)
-            return jsonify({"success": True, "data": movie.to_dict()})
+            return jsonify({"success": True, "data": movie_to_dict(matches.iloc[0])})
         except ValueError as exc:
             return error_response(str(exc), 400)
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("The movie database could not be queried.", 500)
+
+    @app.get("/api/movies/<int:movie_id>/faceoff-metadata")
+    def movie_faceoff_metadata(movie_id):
+        movies = load_movies()
+        matches = movies[movies["id"] == movie_id]
+        if matches.empty:
+            return error_response("Movie not found.", 404)
+
+        movie = matches.iloc[0]
+        tmdb_id = int(movie["tmdb_id"])
+        media_type = movie.get("media_type", "movie") or "movie"
+        if media_type == "tv_season":
+            tmdb_url = f"https://api.themoviedb.org/3/tv/{int(movie['series_tmdb_id'])}/season/{int(movie['season_number'])}"
+        else:
+            tmdb_url = f"https://api.themoviedb.org/3/{'tv' if media_type == 'tv' else 'movie'}/{tmdb_id}"
+        token = os.environ.get("TMDB_ACCESS_TOKEN", "")
+        if not token:
+            env_path = Path(__file__).resolve().parent.parent / ".env"
+            if env_path.exists():
+                for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if line.startswith("TMDB_ACCESS_TOKEN="):
+                        token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        if not token:
+            return error_response("TMDB metadata could not be loaded.", 502)
+
+        try:
+            response = requests.get(
+                tmdb_url,
+                headers={"Authorization": f"Bearer {token}", "accept": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            app.logger.warning("TMDB face-off metadata request failed for movie %s: %s", tmdb_id, exc)
+            return error_response("TMDB metadata could not be loaded.", 502)
+
+        return jsonify({"success": True, "data": {
+            "poster_path": payload.get("poster_path"),
+            "popularity": payload.get("popularity"),
+        }})
+
+    @app.get("/api/movies/<int:movie_id>/watch-providers")
+    def movie_watch_providers(movie_id):
+        movies = load_movies()
+        matches = movies[movies["id"] == movie_id]
+        if matches.empty:
+            return error_response("Movie not found.", 404)
+
+        movie = matches.iloc[0]
+        tmdb_id = int(movie["tmdb_id"])
+        media_type = movie.get("media_type", "movie") or "movie"
+        provider_id = int(movie["series_tmdb_id"]) if media_type == "tv_season" else tmdb_id
+        provider_type = "tv" if media_type in {"tv", "tv_season"} else "movie"
+        token = os.environ.get("TMDB_ACCESS_TOKEN", "")
+        if not token:
+            env_path = Path(__file__).resolve().parent.parent / ".env"
+            if env_path.exists():
+                for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if line.startswith("TMDB_ACCESS_TOKEN="):
+                        token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        if not token:
+            app.logger.error("TMDB access token is not configured.")
+            return error_response("Watch availability could not be loaded.", 502)
+
+        try:
+            response = requests.get(
+                f"https://api.themoviedb.org/3/{provider_type}/{provider_id}/watch/providers",
+                headers={"Authorization": f"Bearer {token}", "accept": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            app.logger.warning("TMDB watch-provider request failed for movie %s: %s", tmdb_id, exc)
+            return error_response("Watch availability could not be loaded.", 502)
+
+        india = payload.get("results", {}).get("IN") or {}
+        return jsonify({
+            "success": True,
+            "data": {
+                "link": india.get("link"),
+                "flatrate": india.get("flatrate", []),
+                "rent": india.get("rent", []),
+                "buy": india.get("buy", []),
+            },
+        })
 
     @app.get("/api/search")
     def search_movies():
@@ -89,49 +175,26 @@ def create_app(db_path=None):
             return paginated_response(query, filters["page"], filters["limit"])
         except ValueError as exc:
             return error_response(str(exc), 400)
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("The movie database could not be queried.", 500)
 
     @app.get("/api/genres")
     def list_genres():
-        try:
-            names = db.session.query(Genre.name).order_by(Genre.name).all()
-            return jsonify({"success": True, "data": [name for (name,) in names]})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("The genre list could not be loaded.", 500)
+        movies = load_movies()
+        names = sorted({genre for genres in movies["genres"] for genre in genres})
+        return jsonify({"success": True, "data": names})
 
     @app.get("/api/languages")
     def list_languages():
-        try:
-            languages = (
-                db.session.query(Movie.language)
-                .filter(Movie.language.isnot(None), Movie.language != "")
-                .distinct()
-                .order_by(Movie.language)
-                .all()
-            )
-            return jsonify({"success": True, "data": [language for (language,) in languages]})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("The language list could not be loaded.", 500)
+        movies = load_movies()
+        languages = sorted({language for language in movies["language"] if language})
+        return jsonify({"success": True, "data": languages})
 
     @app.get("/api/analytics")
     def analytics_overview():
-        try:
-            return jsonify({"success": True, "data": summary(load_movie_frame())})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Analytics could not be calculated.", 500)
+        return jsonify({"success": True, "data": summary(load_movie_frame())})
 
     @app.get("/api/trending")
     def trending_movies():
-        try:
-            return jsonify({"success": True, "data": trending(load_movie_frame())})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Trending movies could not be calculated.", 500)
+        return jsonify({"success": True, "data": trending(load_movie_frame())})
 
     @app.get("/api/recommendations")
     def movie_recommendations():
@@ -143,47 +206,32 @@ def create_app(db_path=None):
             return error_response(str(exc), 400)
         except LookupError as exc:
             return error_response(str(exc), 404)
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Recommendations could not be calculated.", 500)
 
     @app.get("/api/analytics/genres")
     def genre_analytics():
-        try:
-            frame = load_movie_frame()
-            distribution, averages = genre_statistics(frame)
-            return jsonify({"success": True, "data": {
-                "distribution": records(distribution, ["genre", "movies"]),
-                "average_rating": records(averages, ["genre", "average_rating", "rated_movies", "movies"]),
-                "trends": genre_trends(frame),
-            }})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Genre analytics could not be calculated.", 500)
+        frame = load_movie_frame()
+        distribution, averages = genre_statistics(frame)
+        return jsonify({"success": True, "data": {
+            "distribution": records(distribution, ["genre", "movies"]),
+            "average_rating": records(averages, ["genre", "average_rating", "rated_movies", "movies"]),
+            "trends": genre_trends(frame),
+        }})
 
     @app.get("/api/analytics/languages")
     def language_analytics():
-        try:
-            distribution, averages = language_statistics(load_movie_frame().drop_duplicates(subset=["id"]))
-            return jsonify({"success": True, "data": {
-                "distribution": records(distribution, ["language", "movies"]),
-                "average_rating": records(averages, ["language", "average_rating", "rated_movies", "movies"]),
-            }})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Language analytics could not be calculated.", 500)
+        distribution, averages = language_statistics(load_movie_frame().drop_duplicates(subset=["id"]))
+        return jsonify({"success": True, "data": {
+            "distribution": records(distribution, ["language", "movies"]),
+            "average_rating": records(averages, ["language", "average_rating", "rated_movies", "movies"]),
+        }})
 
     @app.get("/api/analytics/years")
     def year_analytics():
-        try:
-            years, averages = year_statistics(load_movie_frame().drop_duplicates(subset=["id"]))
-            return jsonify({"success": True, "data": {
-                "movies_by_year": records(years, ["year", "count"]),
-                "average_rating_by_year": records(averages, ["year", "average_rating", "rated_movies"]),
-            }})
-        except SQLAlchemyError:
-            db.session.rollback()
-            return error_response("Year analytics could not be calculated.", 500)
+        years, averages = year_statistics(load_movie_frame().drop_duplicates(subset=["id"]))
+        return jsonify({"success": True, "data": {
+            "movies_by_year": records(years, ["year", "count"]),
+            "average_rating_by_year": records(averages, ["year", "average_rating", "rated_movies"]),
+        }})
 
     return app
 
@@ -249,49 +297,50 @@ def parse_movie_filters(args):
 
 
 def build_movie_query(filters):
-    query = db.session.query(Movie)
+    query = load_movies()
     if filters["search"]:
-        query = query.filter(Movie.title.ilike(f"%{filters['search']}%"))
+        query = query[query["title"].str.contains(filters["search"], case=False, na=False, regex=False)]
     if filters["genre"]:
-        query = query.filter(Movie.genres.any(Genre.name == filters["genre"]))
+        query = query[query["genres"].map(lambda genres: filters["genre"] in genres)]
     if filters["language"]:
-        query = query.filter(Movie.language == filters["language"])
+        query = query[query["language"] == filters["language"]]
     if filters["year"] is not None:
-        query = query.filter(Movie.year == filters["year"])
+        query = query[query["year"] == filters["year"]]
     if filters["year_from"] is not None:
-        query = query.filter(Movie.year >= filters["year_from"])
+        query = query[query["year"] >= filters["year_from"]]
     if filters["year_to"] is not None:
-        query = query.filter(Movie.year <= filters["year_to"])
+        query = query[query["year"] <= filters["year_to"]]
     if filters["min_rating"] is not None:
-        query = query.filter(Movie.rating >= filters["min_rating"])
+        query = query[query["rating"] >= filters["min_rating"]]
     if filters["max_rating"] is not None:
-        query = query.filter(Movie.rating <= filters["max_rating"])
+        query = query[query["rating"] <= filters["max_rating"]]
     if filters["min_votes"] is not None:
-        query = query.filter(Movie.votes >= filters["min_votes"])
+        query = query[query["votes"] >= filters["min_votes"]]
     if filters["min_runtime"] is not None:
-        query = query.filter(Movie.runtime >= filters["min_runtime"])
+        query = query[query["runtime"] >= filters["min_runtime"]]
     if filters["max_runtime"] is not None:
-        query = query.filter(Movie.runtime <= filters["max_runtime"])
+        query = query[query["runtime"] <= filters["max_runtime"]]
     if filters["cast"]:
-        query = query.filter(Movie.cast_members.any(CastMember.name == filters["cast"]))
+        query = query[query["cast"].map(lambda cast: filters["cast"] in cast)]
     if filters["director"]:
-        query = query.filter(Movie.director.ilike(filters["director"]))
+        query = query[query["director"].str.contains(filters["director"], case=False, na=False, regex=False)]
     if filters["certificate"]:
-        query = query.filter(Movie.certificate == filters["certificate"])
-    return query.order_by(SORTS[filters["sort"]], Movie.id)
+        query = query[query["certificate"] == filters["certificate"]]
+    sort_column, ascending = SORTS[filters["sort"]]
+    return query.sort_values([sort_column, "id"], ascending=[ascending, True], na_position="last")
 
 
 def paginated_response(query, page, limit):
-    total = query.order_by(None).count()
-    movies = query.offset((page - 1) * limit).limit(limit).all()
+    total = len(query)
+    movies = query.iloc[(page - 1) * limit:page * limit]
     return jsonify({
         "success": True,
-        "data": [movie.to_dict() for movie in movies],
+        "data": [movie_to_dict(movie) for _, movie in movies.iterrows()],
         "pagination": {
             "page": page,
             "limit": limit,
             "total": total,
-            "pages": math.ceil(total / limit) if total else 0,
+            "pages": (total + limit - 1) // limit if total else 0,
         },
     })
 
