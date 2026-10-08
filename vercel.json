@@ -1,7 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/index.py": {}
+    "api/index.py": {
+      "includeFiles": [
+        "data/movies.csv"
+      ]
+    }
   },
   "rewrites": [
     {
